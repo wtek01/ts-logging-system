@@ -6,18 +6,22 @@
 ✅ Microservices (Auth, Payment, Order) send logs via HTTP
 ✅ Store logs in files (`logs/app.log`)
 
-📂 logging-service
-├── 📂 logs # Directory to store log files
-│ ├── app.log # Log file (created automatically)
-├── logger.ts # Logger configuration using Winston
-├── logRouter.ts # Routes for log ingestion
-├── server.ts # Express server entry point
-
 ## **Version 2.0 - Scalable Log Processing**
 
 ⬜ Integrate **Redis/Kafka** for log queuing
 ⬜ Implement **log processing workers** for async storage
 ⬜ Add **log filtering & structured JSON format**
+✅ Implement a queue system (Redis Streams or Kafka) to handle logs asynchronously.
+✅ Process logs in background workers instead of writing immediately.
+✅ Enhance log structure (include metadata like request ID, user ID, etc.).
+✅ Support log filtering (e.g., only store logs above a certain severity level).
+📌 Breakdown of the Log Flow
+1️⃣ Microservices (Auth, Payment, Order) send logs → Redis stores them in logs-stream.
+2️⃣ Worker (logWorker.ts) listens to logs-stream and reads logs asynchronously.
+3️⃣ Worker processes logs:
+
+✅ If log level is warn or error, store it in logs/app.log.
+✅ (Future) Store logs in Elasticsearch for real-time search. 4️⃣ After processing, logs are deleted from Redis (xdel).
 
 ## **Version 3.0 - Advanced Storage & Search**
 

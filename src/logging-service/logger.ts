@@ -15,10 +15,11 @@ import winston from "winston";
 
 // Logger configuration using Winston - our centralized logging setup
 
-// Ensure logs directory exists - create it if it doesn't
-// Using path.join for cross-platform compatibility
+// Create logs directory in the logging-service directory
 const logDir = path.join(__dirname, "logs");
 fs.ensureDirSync(logDir);
+
+console.log("Logs will be written to:", logDir);
 
 // Define log format
 // - timestamp(): Adds ISO timestamp to each log
@@ -37,7 +38,13 @@ export const logger = winston.createLogger({
   transports: [
     new winston.transports.Console(), // Outputs logs to console
     new winston.transports.File({
-      filename: path.join(logDir, "app.log"), // Saves logs to app.log file
+      dirname: logDir,
+      filename: "app.log",
+      options: { flags: "a" },
+      tailable: true,
     }),
   ],
 });
+
+// Log a test message to verify file writing
+logger.info("Logger initialized", { service: "logging-service" });

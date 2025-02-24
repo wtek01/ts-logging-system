@@ -1,1 +1,3 @@
-// Directory to store log files
+{"level":"info","message":"Logger initialized","service":"logging-service","timestamp":"2025-02-24T22:39:24.571Z"}
+{"level":"info","message":"User login attempt","service":"auth-service","timestamp":"2025-02-24T22:39:36.045Z"}
+{"level":"info","message":"User login attempt","service":"auth-service","timestamp":"2025-02-24T22:40:12.106Z"}
