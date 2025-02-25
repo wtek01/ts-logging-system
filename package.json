@@ -6,8 +6,14 @@
   "scripts": {
     "start:logging": "node dist/logging-service/server.js",
     "start:auth": "node dist/microservices/auth-service/server.js",
+    "start:worker": "node dist/logging-service/logWorker.js",
     "dev:logging": "ts-node-dev src/logging-service/server.ts",
     "dev:auth": "ts-node-dev src/microservices/auth-service/server.ts",
+    "dev:worker": "ts-node-dev src/logging-service/logWorker.ts",
+    "dev:payment": "ts-node-dev src/microservices/payment-service/server.ts",
+    "dev:order": "ts-node-dev src/microservices/order-service/server.ts",
+    "start:payment": "node dist/microservices/payment-service/server.js",
+    "start:order": "node dist/microservices/order-service/server.js",
     "build": "tsc",
     "test": "jest",
     "lint": "eslint . --ext .ts"
@@ -17,6 +23,7 @@
     "dotenv": "^16.4.7",
     "express": "^4.21.2",
     "fs-extra": "^11.3.0",
+    "ioredis": "^5.5.0",
     "morgan": "^1.10.0",
     "winston": "^3.17.0"
   },

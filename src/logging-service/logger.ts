@@ -1,50 +1,36 @@
-// Logger configuration using Winston - our centralized logging setup
-
-// fs-extra: Enhanced file system module that adds extra functionality to Node's native 'fs'
-// Provides Promise-based APIs and additional methods for file operations
-import fs from "fs-extra";
-
-// path: Node.js built-in module for handling file paths across different operating systems
-// Helps create consistent file paths between Windows and Unix-based systems
-import path from "path";
-
-// winston: Popular logging library for Node.js that supports multiple logging levels,
-// transports (output targets), and formatting options
-// Provides a flexible and extensible logging framework
+import dotenv from "dotenv";
+import Redis from "ioredis";
 import winston from "winston";
 
-// Logger configuration using Winston - our centralized logging setup
+dotenv.config();
 
-// Create logs directory in the logging-service directory
-const logDir = path.join(__dirname, "logs");
-fs.ensureDirSync(logDir);
+// Redis Client Setup
+const redis = new Redis({ host: "127.0.0.1", port: 6379 });
+redis.on("error", (err) => console.error("❌ Redis Error:", err.message));
 
-console.log("Logs will be written to:", logDir);
-
-// Define log format
-// - timestamp(): Adds ISO timestamp to each log
-// - json(): Formats logs as JSON for better parsing
-const logFormat = winston.format.combine(
-  winston.format.timestamp(),
-  winston.format.json()
-);
-
-// Create a logger instance with two transports:
-// 1. Console transport for development debugging
-// 2. File transport for persistent logging
+// Winston Logger Configuration
 export const logger = winston.createLogger({
-  level: "info", // Default log level
-  format: logFormat,
-  transports: [
-    new winston.transports.Console(), // Outputs logs to console
-    new winston.transports.File({
-      dirname: logDir,
-      filename: "app.log",
-      options: { flags: "a" },
-      tailable: true,
-    }),
-  ],
+  level: "info",
+  format: winston.format.combine(
+    winston.format.timestamp(),
+    winston.format.json()
+  ),
+  transports: [new winston.transports.Console()],
 });
 
-// Log a test message to verify file writing
-logger.info("Logger initialized", { service: "logging-service" });
+// Function to push logs to Redis Stream
+export async function pushLogToQueue(
+  service: string,
+  level: string,
+  message: string
+) {
+  const logEntry = JSON.stringify({
+    service,
+    level,
+    message,
+    timestamp: new Date().toISOString(),
+  });
+
+  await redis.xadd("logs-stream", "*", "log", logEntry);
+  console.log(`📤 Log sent to Redis queue: ${logEntry}`);
+}

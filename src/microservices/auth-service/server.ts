@@ -5,7 +5,7 @@ const app = express();
 app.use(express.json());
 
 app.post("/login", (req, res) => {
-  sendLog("auth-service", "info", "User login attempt");
+  sendLog("auth-service", "error", "User login attempt");
   res.json({ message: "User logged in" });
 });
 

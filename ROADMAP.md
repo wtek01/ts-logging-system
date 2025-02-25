@@ -20,8 +20,8 @@
 2️⃣ Worker (logWorker.ts) listens to logs-stream and reads logs asynchronously.
 3️⃣ Worker processes logs:
 
-✅ If log level is warn or error, store it in logs/app.log.
-✅ (Future) Store logs in Elasticsearch for real-time search. 4️⃣ After processing, logs are deleted from Redis (xdel).
+- If log level is warn or error, store it in logs/app.log.
+- (Future) Store logs in Elasticsearch for real-time search. 4️⃣ After processing, logs are deleted from Redis (xdel).
 
 ## **Version 3.0 - Advanced Storage & Search**
 
