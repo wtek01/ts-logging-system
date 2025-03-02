@@ -7,7 +7,10 @@ import winston from "winston";
 dotenv.config();
 
 // Redis Client Setup
-const redis = new Redis({ host: "127.0.0.1", port: 6379 });
+const redis = new Redis({
+  host: process.env.REDIS_HOST || "127.0.0.1",
+  port: parseInt(process.env.REDIS_PORT || "6379"),
+});
 redis.on("error", (err) => console.error("❌ Redis Error:", err.message));
 
 // Ensure logs directory exists
