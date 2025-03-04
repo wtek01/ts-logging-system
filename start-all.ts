@@ -1,46 +1,136 @@
 import { exec, spawn } from "child_process";
 
-// Fonction pour vérifier si Redis est en cours d'exécution
-function checkRedis(): Promise<boolean> {
+// Function to check if Kafka is running
+function checkKafka(): Promise<boolean> {
   return new Promise((resolve) => {
-    exec("docker ps | findstr redis", (error) => {
+    exec("docker ps | findstr kafka", (error) => {
       resolve(!error);
     });
   });
 }
 
-// Fonction pour démarrer Redis
-async function startRedis() {
-  console.log("🐳 Vérification de Redis...");
-  const isRunning = await checkRedis();
+// Function to check if Kafka is ready to accept connections
+function checkKafkaReady(): Promise<boolean> {
+  return new Promise((resolve) => {
+    exec(
+      "docker exec kafka kafka-topics.sh --list --bootstrap-server localhost:9092",
+      (error) => {
+        resolve(!error);
+      }
+    );
+  });
+}
+
+// Function to create Docker network if it doesn't exist
+async function createNetworkIfNotExists(): Promise<void> {
+  return new Promise((resolve) => {
+    exec("docker network inspect kafka-net", (error) => {
+      if (error) {
+        // Network doesn't exist, create it
+        exec("docker network create kafka-net", (createError) => {
+          if (createError) {
+            console.error("❌ Error creating network:", createError);
+          } else {
+            console.log("✅ Created kafka-net network");
+          }
+          resolve();
+        });
+      } else {
+        console.log("✅ kafka-net network already exists");
+        resolve();
+      }
+    });
+  });
+}
+
+// Function to wait for Kafka to be ready
+async function waitForKafka(maxAttempts = 30): Promise<boolean> {
+  for (let i = 0; i < maxAttempts; i++) {
+    console.log(
+      `⏳ Waiting for Kafka to be ready (attempt ${i + 1}/${maxAttempts})...`
+    );
+    if (await checkKafkaReady()) {
+      console.log("✅ Kafka is ready!");
+      return true;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 2000));
+  }
+  return false;
+}
+
+// Function to start Kafka and Zookeeper
+async function startKafka() {
+  console.log("🐳 Checking Kafka...");
+  const isRunning = await checkKafka();
 
   if (isRunning) {
-    console.log("✅ Redis est déjà en cours d'exécution");
+    console.log("✅ Kafka is already running");
   } else {
-    console.log("🐳 Démarrage de Redis...");
+    console.log("🐳 Starting Kafka and Zookeeper...");
     try {
+      // Create network if it doesn't exist
+      await createNetworkIfNotExists();
+
+      // Start Zookeeper
       exec(
-        "docker start redis || docker run -d --name redis -p 6379:6379 redis",
+        "docker start zookeeper || docker run -d --name zookeeper --network kafka-net -p 2181:2181 wurstmeister/zookeeper",
         (error, stdout) => {
           if (error) {
-            console.error("❌ Erreur lors du démarrage de Redis:", error);
+            console.error("❌ Error starting Zookeeper:", error);
             return;
           }
-          console.log("✅ Redis démarré:", stdout.trim());
+          console.log("✅ Zookeeper started:", stdout.trim());
         }
       );
-      // Attendre que Redis démarre
-      await new Promise((resolve) => setTimeout(resolve, 2000));
-    } catch (redisError) {
-      console.error("❌ Erreur lors du démarrage de Redis:", redisError);
+
+      // Wait for Zookeeper to be ready
+      await new Promise((resolve) => setTimeout(resolve, 5000));
+
+      // Start Kafka with proper networking configuration
+      exec(
+        "docker start kafka || docker run -d --name kafka --network kafka-net -p 9092:9092 " +
+          "-e KAFKA_BROKER_ID=1 " +
+          "-e KAFKA_ZOOKEEPER_CONNECT=zookeeper:2181 " +
+          "-e KAFKA_LISTENERS=PLAINTEXT://:9092 " +
+          "-e KAFKA_ADVERTISED_LISTENERS=PLAINTEXT://localhost:9092 " +
+          "-e KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR=1 " +
+          "wurstmeister/kafka",
+        (error, stdout) => {
+          if (error) {
+            console.error("❌ Error starting Kafka:", error);
+            return;
+          }
+          console.log("✅ Kafka started:", stdout.trim());
+        }
+      );
+
+      // Wait for Kafka to be ready
+      const isReady = await waitForKafka();
+      if (!isReady) {
+        throw new Error("Kafka failed to become ready in time");
+      }
+
+      // Create the logs topic if it doesn't exist
+      exec(
+        "docker exec kafka kafka-topics.sh --create --if-not-exists --topic logs --bootstrap-server localhost:9092 --replication-factor 1 --partitions 1",
+        (error) => {
+          if (error) {
+            console.error("❌ Error creating logs topic:", error);
+          } else {
+            console.log("✅ Created logs topic");
+          }
+        }
+      );
+    } catch (kafkaError) {
+      console.error("❌ Error starting Kafka:", kafkaError);
       process.exit(1);
     }
   }
 }
 
-// Fonction pour démarrer un service
+// Function to start a service
 function startService(name: string, command: string, color: string) {
-  console.log(`🚀 Démarrage du service ${color}${name}${"\x1b[0m"}...`);
+  console.log(`🚀 Starting service ${color}${name}${"\x1b[0m"}...`);
 
   const parts = command.split(" ");
   const cmd = parts[0];
@@ -61,48 +151,51 @@ function startService(name: string, command: string, color: string) {
 
   process.on("close", (code) => {
     if (code !== 0) {
-      console.log(
-        `${color}[${name}]${"\x1b[0m"} s'est arrêté avec le code ${code}`
-      );
+      console.log(`${color}[${name}]${"\x1b[0m"} stopped with code ${code}`);
     }
   });
 
   return process;
 }
 
-// Fonction principale
+// Main function
 async function main() {
-  // Démarrer Redis
-  await startRedis();
+  try {
+    // Start Kafka and wait for it to be ready
+    await startKafka();
 
-  // Configuration des services
-  const services = [
-    { name: "logging", command: "npm run dev:logging", color: "\x1b[34m" }, // Bleu
-    { name: "worker", command: "npm run dev:worker", color: "\x1b[32m" }, // Vert
-    { name: "auth", command: "npm run dev:auth", color: "\x1b[33m" }, // Jaune
-    { name: "payment", command: "npm run dev:payment", color: "\x1b[35m" }, // Magenta
-    { name: "order", command: "npm run dev:order", color: "\x1b[36m" }, // Cyan
-  ];
+    // Service configuration
+    const services = [
+      { name: "logging", command: "npm run dev:logging", color: "\x1b[34m" }, // Blue
+      { name: "worker", command: "npm run dev:worker", color: "\x1b[32m" }, // Green
+      { name: "auth", command: "npm run dev:auth", color: "\x1b[33m" }, // Yellow
+      { name: "payment", command: "npm run dev:payment", color: "\x1b[35m" }, // Magenta
+      { name: "order", command: "npm run dev:order", color: "\x1b[36m" }, // Cyan
+    ];
 
-  // Démarrer tous les services
-  const processes = services.map((service) =>
-    startService(service.name, service.command, service.color)
-  );
+    // Start all services
+    const processes = services.map((service) =>
+      startService(service.name, service.command, service.color)
+    );
 
-  // Gérer l'arrêt propre
-  process.on("SIGINT", () => {
-    console.log("\n🛑 Arrêt de tous les services...");
-    processes.forEach((p) => {
-      if (!p.killed) {
-        p.kill();
-      }
+    // Handle graceful shutdown
+    process.on("SIGINT", async () => {
+      console.log("\n🛑 Stopping all services...");
+      processes.forEach((p) => {
+        if (!p.killed) {
+          p.kill();
+        }
+      });
+      process.exit(0);
     });
-    process.exit(0);
-  });
+  } catch (error) {
+    console.error("❌ Error in main:", error);
+    process.exit(1);
+  }
 }
 
-// Exécuter la fonction principale
+// Run main function
 main().catch((error) => {
-  console.error("❌ Erreur:", error);
+  console.error("❌ Error:", error);
   process.exit(1);
 });

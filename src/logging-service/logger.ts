@@ -1,12 +1,11 @@
 import dotenv from "dotenv";
-import Redis from "ioredis";
 import winston from "winston";
+import { connectKafka, sendLogToKafka } from "./kafka.service";
 
 dotenv.config();
 
-// Redis Client Setup
-const redis = new Redis({ host: "127.0.0.1", port: 6379 });
-redis.on("error", (err) => console.error("❌ Redis Error:", err.message));
+// Connect to Kafka
+connectKafka();
 
 // Winston Logger Configuration
 export const logger = winston.createLogger({
@@ -18,19 +17,11 @@ export const logger = winston.createLogger({
   transports: [new winston.transports.Console()],
 });
 
-// Function to push logs to Redis Stream
+// Function to push logs to Kafka
 export async function pushLogToQueue(
   service: string,
   level: string,
   message: string
 ) {
-  const logEntry = JSON.stringify({
-    service,
-    level,
-    message,
-    timestamp: new Date().toISOString(),
-  });
-
-  await redis.xadd("logs-stream", "*", "log", logEntry);
-  console.log(`📤 Log sent to Redis queue: ${logEntry}`);
+  await sendLogToKafka(service, level, message);
 }

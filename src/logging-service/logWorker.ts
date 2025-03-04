@@ -1,67 +1,61 @@
-import dotenv from "dotenv";
 import fs from "fs-extra";
-import Redis from "ioredis";
 import path from "path";
-import winston from "winston";
+import { consumer } from "./kafka.service";
 
-dotenv.config();
+const LOG_DIR = path.join(__dirname, "logs");
+const LOG_FILE = path.join(LOG_DIR, "app.log");
 
-// Redis Client Setup
-const redis = new Redis({
-  host: process.env.REDIS_HOST || "127.0.0.1",
-  port: parseInt(process.env.REDIS_PORT || "6379"),
-});
-redis.on("error", (err) => console.error("❌ Redis Error:", err.message));
+// Ensure log directory exists
+fs.ensureDirSync(LOG_DIR);
 
-// Ensure logs directory exists
-const logDir = path.join(__dirname, "logs");
-fs.ensureDirSync(logDir);
+async function processLog(logEntry: string) {
+  try {
+    const log = JSON.parse(logEntry);
+    const { service, level, message, timestamp } = log;
 
-// Winston File Logger Configuration
-const fileLogger = winston.createLogger({
-  level: "info",
-  format: winston.format.combine(
-    winston.format.timestamp(),
-    winston.format.json()
-  ),
-  transports: [
-    new winston.transports.File({
-      filename: path.join(logDir, "app.log"),
-    }),
-  ],
-});
+    const logLine =
+      JSON.stringify({
+        level,
+        message,
+        service,
+        timestamp,
+      }) + "\n";
 
-// Function to process logs from Redis Stream
-async function processLogs() {
-  console.log("🔄 Log worker started...");
-
-  while (true) {
-    try {
-      const logs = await redis.xread("BLOCK", 0, "STREAMS", "logs-stream", "$");
-
-      if (logs) {
-        for (const [, entries] of logs) {
-          for (const [id, entry] of entries) {
-            const logData = JSON.parse(entry[1]);
-
-            // Apply filtering (only store logs above 'warn' level)
-            if (["warn", "error"].includes(logData.level)) {
-              fileLogger.log(logData);
-              console.log(`✅ Log processed: ${logData.message}`);
-            } else {
-              console.log(`🟡 Ignored low-priority log: ${logData.message}`);
-            }
-
-            // Acknowledge log entry
-            await redis.xdel("logs-stream", id);
-          }
-        }
-      }
-    } catch (err) {
-      console.error("❌ Log processing error:", (err as Error).message);
-    }
+    await fs.appendFile(LOG_FILE, logLine);
+    console.log(`📝 Log written to app.log`);
+  } catch (error) {
+    console.error("❌ Error processing log:", error);
   }
 }
 
-// Start log processing worker
-processLogs();
+async function startLogWorker() {
+  try {
+    console.log("🚀 Starting log worker...");
+
+    // Subscribe to the logs topic
+    await consumer.subscribe({ topic: "logs" });
+
+    // Start consuming messages
+    await consumer.run({
+      eachMessage: async ({ message }) => {
+        if (message.value) {
+          await processLog(message.value.toString());
+        }
+      },
+    });
+
+    console.log("✅ Log worker is running");
+  } catch (error) {
+    console.error("❌ Error in log worker:", error);
+    process.exit(1);
+  }
+}
+
+// Handle graceful shutdown
+process.on("SIGINT", async () => {
+  console.log("\n🛑 Shutting down log worker...");
+  await consumer.disconnect();
+  process.exit(0);
+});
+
+startLogWorker();
