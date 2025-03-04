@@ -109,18 +109,6 @@ async function startKafka() {
       if (!isReady) {
         throw new Error("Kafka failed to become ready in time");
       }
-
-      // Create the logs topic if it doesn't exist
-      exec(
-        "docker exec kafka kafka-topics.sh --create --if-not-exists --topic logs --bootstrap-server localhost:9092 --replication-factor 1 --partitions 1",
-        (error) => {
-          if (error) {
-            console.error("❌ Error creating logs topic:", error);
-          } else {
-            console.log("✅ Created logs topic");
-          }
-        }
-      );
     } catch (kafkaError) {
       console.error("❌ Error starting Kafka:", kafkaError);
       process.exit(1);
